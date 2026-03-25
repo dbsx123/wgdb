@@ -39,7 +39,7 @@
     </style>
     <script src="libs/vue.js"></script>
     <script src="libs/chart.min.js"></script>
-  // <script src="libs/supabase.js"></script>
+    <script src="libs/supabase.js"></script>
 </head>
 <body>
 <div id="app" class="app-container">
@@ -238,7 +238,7 @@
 // ========== Supabase 配置 ==========
 const SUPABASE_URL = 'https://eegpirsqkpovwiljkbra.supabase.co';   // 替换为你的 Supabase URL
 const SUPABASE_KEY = 'sb_publishable_VN8aXmrr4qDVJQcQwTcFQg_Ch9vrrRF';                      // 替换为你的 anon key
-const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 // ========== IndexedDB 管理 ==========
 let db = null;
@@ -324,26 +324,26 @@ async function syncToCloud() {
 
         // 上传项目
         for (let p of localProjects) {
-            await supabase.from('projects').upsert(p);
+            await supabaseClient.from('projects').upsert(p);
         }
         // 上传巡检项
         for (let i of localItems) {
-            await supabase.from('inspection_items').upsert(i);
+            await supabaseClient.from('inspection_items').upsert(i);
         }
         // 上传记录
         for (let r of localRecords) {
-            await supabase.from('records').upsert(r);
+            await supabaseClient.from('records').upsert(r);
         }
         // 上传记录值
         for (let v of localValues) {
-            await supabase.from('record_values').upsert(v);
+            await supabaseClient.from('record_values').upsert(v);
         }
 
         // 拉取云端数据（合并到本地，简单起见，清空本地后重新拉取）
-        const { data: remoteProjects } = await supabase.from('projects').select('*');
-        const { data: remoteItems } = await supabase.from('inspection_items').select('*');
-        const { data: remoteRecords } = await supabase.from('records').select('*');
-        const { data: remoteValues } = await supabase.from('record_values').select('*');
+        const { data: remoteProjects } = await supabaseClient.from('projects').select('*');
+        const { data: remoteItems } = await supabaseClient.from('inspection_items').select('*');
+        const { data: remoteRecords } = await supabaseClient.from('records').select('*');
+        const { data: remoteValues } = await supabaseClient.from('record_values').select('*');
 
         // 清空本地对应 store 后重新插入（更安全）
         const stores = ['projects', 'inspectionItems', 'records', 'recordValues'];
