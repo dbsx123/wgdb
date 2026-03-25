@@ -1,0 +1,798 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes, viewport-fit=cover">
+    <title>巡检助手 - 专业版</title>
+    <style>
+        * { box-sizing: border-box; font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; }
+        body { background: #f0f2f5; margin: 0; padding: 16px; }
+        .app-container { max-width: 1200px; margin: 0 auto; }
+        .card { background: white; border-radius: 24px; padding: 20px; margin-bottom: 24px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
+        .btn { background: #f0f2f5; border: none; padding: 8px 16px; border-radius: 40px; font-size: 14px; cursor: pointer; }
+        .btn-primary { background: #1e6f3f; color: white; }
+        .btn-danger { background: #dc3545; color: white; }
+        .btn-outline { background: white; border: 1px solid #ccc; }
+        .btn-sm { padding: 4px 12px; font-size: 12px; }
+        select, input, textarea { padding: 8px; border-radius: 20px; border: 1px solid #ccc; font-size: 14px; width: 100%; margin: 4px 0; }
+        .section-title { font-size: 18px; font-weight: 600; margin-bottom: 16px; border-left: 4px solid #1e6f3f; padding-left: 12px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; }
+        .inspection-item { background: #fafbfc; border-radius: 20px; padding: 16px; margin-bottom: 16px; border: 1px solid #e9ecef; }
+        .flex-between { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; }
+        .history-list { max-height: 400px; overflow-y: auto; }
+        .history-item { padding: 10px; border-bottom: 1px solid #edf2f7; display: flex; justify-content: space-between; align-items: center; cursor: pointer; }
+        .toast-msg { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: #333; color: white; padding: 8px 20px; border-radius: 40px; z-index: 1000; }
+        .media-preview img { max-width: 80px; max-height: 80px; border-radius: 12px; }
+        audio { height: 36px; }
+        .tab-buttons { display: flex; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
+        .tab-button { padding: 8px 16px; background: #e9ecef; border-radius: 40px; cursor: pointer; }
+        .tab-button.active { background: #1e6f3f; color: white; }
+        canvas { max-width: 100%; height: auto; margin-top: 20px; }
+        .modal { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 1000; }
+        .modal-content { background: white; border-radius: 28px; padding: 24px; max-width: 90%; max-height: 90%; overflow: auto; }
+        .order-control { display: flex; gap: 8px; margin-left: 12px; }
+        .switch { position: relative; display: inline-block; width: 40px; height: 20px; margin-left: 12px; }
+        .switch input { opacity: 0; width: 0; height: 0; }
+        .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #ccc; transition: .4s; border-radius: 20px; }
+        .slider:before { position: absolute; content: ""; height: 16px; width: 16px; left: 2px; bottom: 2px; background-color: white; transition: .4s; border-radius: 50%; }
+        input:checked + .slider { background-color: #1e6f3f; }
+        input:checked + .slider:before { transform: translateX(20px); }
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/vue@2.7.14/dist/vue.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+<div id="app" class="app-container">
+    <!-- 头部工具栏 -->
+    <div class="card">
+        <div class="flex-between">
+            <div>
+                <span>巡检项目：</span>
+                <select v-model="selectedProjectId" @change="switchProject">
+                    <option v-for="p in projects" :value="p.id">{{ p.name }}</option>
+                </select>
+                <button class="btn btn-outline btn-sm" @click="showNewProjectDialog = true">➕ 新建项目</button>
+                <button class="btn btn-outline btn-sm" @click="deleteCurrentProject" v-if="projects.length">🗑️ 删除项目</button>
+                <button class="btn btn-outline btn-sm" @click="createNewRecord">📋 新建总表</button>
+            </div>
+            <div>
+                <span>当前记录时间: {{ currentRecordTime || '未开始' }}</span>
+                <button class="btn btn-primary" @click="saveCurrentRecord">💾 手动保存</button>
+                <button class="btn btn-danger" @click="resetCurrentForm">🔄 重置</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 选项卡 -->
+    <div class="card">
+        <div class="tab-buttons">
+            <div :class="['tab-button', { active: activeTab === 'items' }]" @click="activeTab='items'">巡检项配置</div>
+            <div :class="['tab-button', { active: activeTab === 'templates' }]" @click="activeTab='templates'">项目模板</div>
+            <div :class="['tab-button', { active: activeTab === 'analysis' }]" @click="activeTab='analysis'">历史分析</div>
+        </div>
+
+        <!-- 巡检项配置面板 -->
+        <div v-if="activeTab === 'items'">
+            <div class="flex-between">
+                <div class="section-title">
+                    巡检项列表
+                    <div class="flex-between" style="gap: 12px;">
+                        <label style="display: flex; align-items: center; gap: 6px;">
+                            <span style="font-size: 12px;">启用顺序调整</span>
+                            <label class="switch">
+                                <input type="checkbox" v-model="enableOrdering">
+                                <span class="slider"></span>
+                            </label>
+                        </label>
+                        <button class="btn btn-outline btn-sm" @click="addNewInspectionItem">+ 添加巡检项</button>
+                    </div>
+                </div>
+            </div>
+            <div v-if="inspectionItems.length === 0" style="color:gray; text-align:center;">暂无巡检项，请点击添加</div>
+            <div v-for="(item, idx) in inspectionItems" :key="item.id" class="inspection-item">
+                <div class="flex-between">
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <span v-if="enableOrdering" class="btn btn-outline btn-sm" @click="moveItem(item, 'up')" :disabled="idx === 0">▲</span>
+                        <span v-if="enableOrdering" class="btn btn-outline btn-sm" @click="moveItem(item, 'down')" :disabled="idx === inspectionItems.length-1">▼</span>
+                        <input type="text" v-model="item.name" :disabled="item.is_locked" @blur="updateItemName(item)" style="width: auto;" />
+                        <label><input type="checkbox" v-model="item.is_locked" @change="toggleLock(item)" /> 锁定</label>
+                    </div>
+                    <button v-if="!item.is_locked" class="btn btn-outline btn-sm" @click="deleteInspectionItem(item.id)">删除</button>
+                </div>
+                <div>
+                    <textarea rows="2" :placeholder="`填写 ${item.name} 数据`" v-model="formValues[item.id].text" @input="debouncedAutoSave"></textarea>
+                    <div class="media-buttons">
+                        <label class="btn btn-icon" :for="'photo_'+item.id">📷 照片</label>
+                        <input type="file" accept="image/*" :id="'photo_'+item.id" style="display:none" @change="handlePhotoUpload($event, item.id)">
+                        <button class="btn btn-icon" @click="startRecordVoice(item.id)">🎤 录音</button>
+                        <button v-if="isRecording === item.id" class="btn btn-icon" @click="stopRecordVoice(item.id)">⏹️ 停止</button>
+                    </div>
+                </div>
+                <div class="media-preview">
+                    <div v-if="formValues[item.id].photoUrl"><img :src="formValues[item.id].photoUrl" /><button @click="clearPhoto(item.id)">清除</button></div>
+                    <div v-if="formValues[item.id].voiceUrl"><audio controls :src="formValues[item.id].voiceUrl"></audio><button @click="clearVoice(item.id)">清除语音</button></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 模板管理（简化版，仅保存当前项目巡检项配置）-->
+        <div v-if="activeTab === 'templates'">
+            <div class="flex-between">
+                <div class="section-title">项目模板</div>
+                <button class="btn btn-outline btn-sm" @click="saveCurrentAsTemplate">💾 保存当前为模板</button>
+            </div>
+            <div v-if="templates.length === 0" style="color:gray;">暂无模板，保存当前巡检项为模板</div>
+            <div v-for="tpl in templates" :key="tpl.id" class="inspection-item">
+                <div class="flex-between">
+                    <span><strong>{{ tpl.name }}</strong> ({{ tpl.created_at }})</span>
+                    <div>
+                        <button class="btn btn-outline btn-sm" @click="applyTemplate(tpl.id)">应用模板</button>
+                        <button class="btn btn-outline btn-sm" @click="editTemplate(tpl)">编辑</button>
+                        <button class="btn btn-outline btn-sm" @click="deleteTemplate(tpl.id)">删除</button>
+                    </div>
+                </div>
+                <div><small>包含 {{ tpl.items.length }} 个巡检项</small></div>
+            </div>
+        </div>
+
+        <!-- 历史分析 -->
+        <div v-if="activeTab === 'analysis'">
+            <div class="section-title">数值型巡检项统计</div>
+            <div v-if="analysisData.length === 0" style="color:gray;">暂无数据，请先保存包含数值的巡检记录（如温度、湿度）</div>
+            <div v-else>
+                <table style="width:100%; border-collapse: collapse;">
+                    <tr><th>巡检项</th><th>平均值</th><th>最大值</th><th>最小值</th></tr>
+                    <tr v-for="item in analysisData" :key="item.item"><td>{{ item.item }}</td><td>{{ item.avg }}</td><td>{{ item.max }}</td><td>{{ item.min }}</td></tr>
+                </table>
+                <canvas id="analysisChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <!-- 历史记录卡片（折叠） -->
+    <div class="card">
+        <div class="flex-between">
+            <div class="section-title" @click="historyCollapsed = !historyCollapsed">
+                📅 周期数据库 (历史巡检记录) {{ historyCollapsed ? '▶' : '▼' }}
+            </div>
+            <button class="btn btn-outline btn-sm" @click="refreshHistoryList">刷新</button>
+        </div>
+        <div v-if="!historyCollapsed">
+            <div v-if="historyRecords.length === 0" style="color:gray;">暂无记录</div>
+            <div class="history-list">
+                <div v-for="rec in historyRecords" :key="rec.id" class="history-item" @click="showRecordDetail(rec)">
+                    <span>📆 {{ formatDate(rec.record_time) }}</span>
+                    <span style="color:#1e6f3f;">查看/编辑 →</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 新建项目弹窗 -->
+    <div v-if="showNewProjectDialog" class="modal">
+        <div class="modal-content">
+            <h4>新建项目</h4>
+            <input type="text" v-model="newProjectName" placeholder="项目名称" />
+            <div class="flex-between" style="margin-top: 16px;">
+                <button class="btn btn-outline" @click="showNewProjectDialog = false">取消</button>
+                <button class="btn btn-primary" @click="createProject">创建</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 保存模板弹窗 -->
+    <div v-if="showSaveTemplateDialog" class="modal">
+        <div class="modal-content">
+            <h4>保存模板</h4>
+            <input type="text" v-model="newTemplateName" placeholder="模板名称" />
+            <div class="flex-between" style="margin-top: 16px;">
+                <button class="btn btn-outline" @click="showSaveTemplateDialog = false">取消</button>
+                <button class="btn btn-primary" @click="saveCurrentAsTemplate">保存</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 编辑模板弹窗 -->
+    <div v-if="showEditTemplateDialog" class="modal">
+        <div class="modal-content" style="width: 400px;">
+            <h4>编辑模板</h4>
+            <input type="text" v-model="editingTemplate.name" placeholder="模板名称" />
+            <div v-for="(item, idx) in editingTemplate.items" :key="idx" class="flex-between" style="margin: 8px 0;">
+                <input type="text" v-model="item.name" placeholder="巡检项名称" style="flex:1;" />
+                <label><input type="checkbox" v-model="item.is_locked" /> 锁定</label>
+                <button class="btn btn-outline btn-sm" @click="editingTemplate.items.splice(idx,1)">删除</button>
+            </div>
+            <button class="btn btn-outline btn-sm" @click="editingTemplate.items.push({name:'新巡检项', is_locked:false})">+ 添加项</button>
+            <div class="flex-between" style="margin-top: 16px;">
+                <button class="btn btn-outline" @click="showEditTemplateDialog = false">取消</button>
+                <button class="btn btn-primary" @click="updateTemplate">保存修改</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 历史记录详情模态框 -->
+    <div v-if="showRecordDetailModal" class="modal">
+        <div class="modal-content" style="width: 90%; max-height: 80%; overflow-y: auto;">
+            <h4>历史记录详情</h4>
+            <div><strong>时间：</strong>{{ formatDate(selectedRecord?.record_time) }}</div>
+            <div v-for="item in inspectionItems" :key="item.id" style="margin-top: 16px;">
+                <label><strong>{{ item.name }}</strong></label>
+                <textarea rows="2" v-model="detailFormValues[item.id].text" placeholder="文本数据"></textarea>
+                <div class="media-preview">
+                    <div v-if="detailFormValues[item.id].photoUrl"><img :src="detailFormValues[item.id].photoUrl" width="80" /></div>
+                    <div v-if="detailFormValues[item.id].voiceUrl"><audio controls :src="detailFormValues[item.id].voiceUrl"></audio></div>
+                </div>
+            </div>
+            <div class="flex-between" style="margin-top: 20px;">
+                <button class="btn btn-primary" @click="saveRecordDetail">保存修改</button>
+                <button class="btn btn-danger" @click="deleteRecordFromDetail">删除此记录</button>
+                <button class="btn btn-outline" @click="showRecordDetailModal = false">关闭</button>
+            </div>
+        </div>
+    </div>
+
+    <div v-if="toastMsg" class="toast-msg">{{ toastMsg }}</div>
+</div>
+
+<script>
+// ========== Supabase 配置 ==========
+const SUPABASE_URL = 'https://你的项目ID.supabase.co';   // 替换为你的 Supabase URL
+const SUPABASE_KEY = '你的anon密钥';                      // 替换为你的 anon key
+const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+// ========== IndexedDB 管理 ==========
+let db = null;
+function openDB() {
+    return new Promise((resolve, reject) => {
+        const request = indexedDB.open('InspectionDB', 2);
+        request.onerror = () => reject(request.error);
+        request.onsuccess = () => resolve(request.result);
+        request.onupgradeneeded = (event) => {
+            const db = event.target.result;
+            if (!db.objectStoreNames.contains('projects')) db.createObjectStore('projects', { keyPath: 'id', autoIncrement: true });
+            if (!db.objectStoreNames.contains('inspectionItems')) db.createObjectStore('inspectionItems', { keyPath: 'id', autoIncrement: true });
+            if (!db.objectStoreNames.contains('records')) db.createObjectStore('records', { keyPath: 'id', autoIncrement: true });
+            if (!db.objectStoreNames.contains('recordValues')) db.createObjectStore('recordValues', { keyPath: 'id', autoIncrement: true });
+            if (!db.objectStoreNames.contains('templates')) db.createObjectStore('templates', { keyPath: 'id', autoIncrement: true });
+            if (!db.objectStoreNames.contains('config')) db.createObjectStore('config', { keyPath: 'key' });
+        };
+    });
+}
+
+async function getAll(storeName) {
+    const db = await openDB();
+    return new Promise((resolve, reject) => {
+        const tx = db.transaction(storeName, 'readonly');
+        const store = tx.objectStore(storeName);
+        const req = store.getAll();
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+    });
+}
+
+async function put(storeName, data) {
+    const db = await openDB();
+    return new Promise((resolve, reject) => {
+        const tx = db.transaction(storeName, 'readwrite');
+        const store = tx.objectStore(storeName);
+        const req = store.put(data);
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+    });
+}
+
+async function del(storeName, id) {
+    const db = await openDB();
+    return new Promise((resolve, reject) => {
+        const tx = db.transaction(storeName, 'readwrite');
+        const store = tx.objectStore(storeName);
+        const req = store.delete(id);
+        req.onsuccess = () => resolve();
+        req.onerror = () => reject(req.error);
+    });
+}
+
+async function getConfig(key, defaultValue) {
+    const db = await openDB();
+    return new Promise((resolve, reject) => {
+        const tx = db.transaction('config', 'readonly');
+        const store = tx.objectStore('config');
+        const req = store.get(key);
+        req.onsuccess = () => resolve(req.result ? req.result.value : defaultValue);
+        req.onerror = () => reject(req.error);
+    });
+}
+
+async function setConfig(key, value) {
+    const db = await openDB();
+    return new Promise((resolve, reject) => {
+        const tx = db.transaction('config', 'readwrite');
+        const store = tx.objectStore('config');
+        const req = store.put({ key, value });
+        req.onsuccess = () => resolve();
+        req.onerror = () => reject(req.error);
+    });
+}
+
+// 在线同步函数（简单实现：将本地所有数据上传到 Supabase，并拉取云端数据合并）
+async function syncToCloud() {
+    try {
+        const localProjects = await getAll('projects');
+        const localItems = await getAll('inspectionItems');
+        const localRecords = await getAll('records');
+        const localValues = await getAll('recordValues');
+
+        // 上传项目
+        for (let p of localProjects) {
+            await supabase.from('projects').upsert(p);
+        }
+        // 上传巡检项
+        for (let i of localItems) {
+            await supabase.from('inspection_items').upsert(i);
+        }
+        // 上传记录
+        for (let r of localRecords) {
+            await supabase.from('records').upsert(r);
+        }
+        // 上传记录值
+        for (let v of localValues) {
+            await supabase.from('record_values').upsert(v);
+        }
+
+        // 拉取云端数据（合并到本地，简单起见，清空本地后重新拉取）
+        const { data: remoteProjects } = await supabase.from('projects').select('*');
+        const { data: remoteItems } = await supabase.from('inspection_items').select('*');
+        const { data: remoteRecords } = await supabase.from('records').select('*');
+        const { data: remoteValues } = await supabase.from('record_values').select('*');
+
+        // 清空本地对应 store 后重新插入（更安全）
+        const stores = ['projects', 'inspectionItems', 'records', 'recordValues'];
+        for (let s of stores) {
+            const all = await getAll(s);
+            for (let item of all) await del(s, item.id);
+        }
+        for (let p of remoteProjects) await put('projects', p);
+        for (let i of remoteItems) await put('inspectionItems', i);
+        for (let r of remoteRecords) await put('records', r);
+        for (let v of remoteValues) await put('recordValues', v);
+    } catch (e) {
+        console.warn('同步失败', e);
+    }
+}
+
+// ========== Vue 实例 ==========
+new Vue({
+    el: '#app',
+    data: {
+        projects: [],
+        selectedProjectId: null,
+        inspectionItems: [],
+        formValues: {},
+        currentRecordId: null,
+        currentRecordTime: null,
+        historyRecords: [],
+        activeTab: 'items',
+        templates: [],
+        showNewProjectDialog: false,
+        newProjectName: '',
+        showSaveTemplateDialog: false,
+        newTemplateName: '',
+        showEditTemplateDialog: false,
+        editingTemplate: { id: null, name: '', items: [] },
+        historyCollapsed: true,
+        analysisData: [],
+        chart: null,
+        toastMsg: '',
+        isRecording: null,
+        mediaRecorder: null,
+        audioChunks: [],
+        enableOrdering: false,
+        // 历史记录详情模态框
+        showRecordDetailModal: false,
+        selectedRecord: null,
+        detailFormValues: {},
+        autoSaveTimer: null,
+    },
+    async mounted() {
+        await openDB();
+        await this.loadProjects();
+        // 启动心跳自动保存（每30秒自动保存当前总表）
+        setInterval(() => {
+            if (this.currentRecordId) {
+                this.saveCurrentRecord(false); // 静默保存
+            }
+        }, 30000);
+        // 监听页面关闭前保存
+        window.addEventListener('beforeunload', () => {
+            if (this.currentRecordId) {
+                this.saveCurrentRecord(false);
+            }
+        });
+    },
+    methods: {
+        showToast(msg, dur=2000) { this.toastMsg = msg; setTimeout(()=>this.toastMsg='', dur); },
+        async loadProjects() {
+            this.projects = await getAll('projects');
+            if (this.projects.length) {
+                this.selectedProjectId = this.projects[0].id;
+                await this.switchProject();
+            } else {
+                await this.createDefaultProject();
+            }
+        },
+        async createDefaultProject() {
+            const newProj = { name: '默认项目', created_at: new Date().toISOString() };
+            const id = await put('projects', newProj);
+            this.projects.push({ ...newProj, id });
+            this.selectedProjectId = id;
+            await this.switchProject();
+        },
+        async switchProject() {
+            if (!this.selectedProjectId) return;
+            await this.loadInspectionItems();
+            await this.loadHistoryList();
+            await this.createNewRecord(false);
+            await this.loadTemplates();
+            await this.loadAnalysis();
+            // 尝试从云端同步（后台）
+            syncToCloud().catch(console.warn);
+        },
+        async loadInspectionItems() {
+            const all = await getAll('inspectionItems');
+            let items = all.filter(i => i.project_id === this.selectedProjectId);
+            // 按 order_index 排序
+            items.sort((a,b) => (a.order_index||0) - (b.order_index||0));
+            this.inspectionItems = items;
+            this.initFormValues();
+        },
+        initFormValues() {
+            const newVals = {};
+            for (let item of this.inspectionItems) {
+                if (!this.formValues[item.id]) {
+                    newVals[item.id] = { text: '', photoUrl: null, voiceUrl: null, photoFile: null, voiceFile: null, savedPhotoPath: null, savedVoicePath: null };
+                } else {
+                    newVals[item.id] = this.formValues[item.id];
+                }
+            }
+            this.formValues = newVals;
+        },
+        async loadHistoryList() {
+            const all = await getAll('records');
+            this.historyRecords = all.filter(r => r.project_id === this.selectedProjectId).sort((a,b)=>new Date(b.record_time)-new Date(a.record_time));
+        },
+        async createNewRecord(showMsg=true) {
+            if (!this.selectedProjectId) return;
+            const newRecord = { project_id: this.selectedProjectId, record_time: new Date().toISOString() };
+            const id = await put('records', newRecord);
+            this.currentRecordId = id;
+            this.currentRecordTime = newRecord.record_time;
+            this.resetFormData();
+            if (showMsg) this.showToast('新建总表成功');
+        },
+        resetFormData() {
+            for (let item of this.inspectionItems) {
+                if (this.formValues[item.id]) {
+                    this.formValues[item.id].text = '';
+                    this.formValues[item.id].photoUrl = null;
+                    this.formValues[item.id].voiceUrl = null;
+                    this.formValues[item.id].photoFile = null;
+                    this.formValues[item.id].voiceFile = null;
+                }
+            }
+        },
+        resetCurrentForm() { this.resetFormData(); this.showToast('已重置'); },
+        // 自动保存（防抖）
+        debouncedAutoSave() {
+            if (this.autoSaveTimer) clearTimeout(this.autoSaveTimer);
+            this.autoSaveTimer = setTimeout(() => {
+                this.saveCurrentRecord(false); // 自动保存，不弹出提示
+                this.showToast('已自动保存');
+            }, 1000);
+        },
+        async saveCurrentRecord(showMsg=true) {
+            if (!this.currentRecordId) { if(showMsg) this.showToast('请先新建总表'); return; }
+            if (!this.inspectionItems.length) { if(showMsg) this.showToast('暂无巡检项'); return; }
+            // 保存本地
+            const values = [];
+            for (let item of this.inspectionItems) {
+                const val = this.formValues[item.id];
+                if (!val) continue;
+                let photoPath = null, voicePath = null;
+                if (val.photoFile && val.photoFile instanceof File) {
+                    const reader = new FileReader();
+                    const base64 = await new Promise(resolve => {
+                        reader.onload = e => resolve(e.target.result);
+                        reader.readAsDataURL(val.photoFile);
+                    });
+                    photoPath = base64;
+                } else if (val.savedPhotoPath) photoPath = val.savedPhotoPath;
+                if (val.voiceFile && val.voiceFile instanceof Blob) {
+                    const reader = new FileReader();
+                    const base64 = await new Promise(resolve => {
+                        reader.onload = e => resolve(e.target.result);
+                        reader.readAsDataURL(val.voiceFile);
+                    });
+                    voicePath = base64;
+                } else if (val.savedVoicePath) voicePath = val.savedVoicePath;
+                values.push({ item_id: item.id, text_value: val.text || '', photo_path: photoPath, voice_path: voicePath });
+            }
+            const allVals = await getAll('recordValues');
+            const toDel = allVals.filter(v => v.record_id === this.currentRecordId);
+            for (let v of toDel) await del('recordValues', v.id);
+            for (let v of values) {
+                await put('recordValues', { record_id: this.currentRecordId, ...v });
+            }
+            if (showMsg) this.showToast('保存成功！');
+            await this.loadHistoryList();
+            // 同步到云端（后台）
+            syncToCloud().catch(console.warn);
+        },
+        async loadRecordValuesToForm(recordId) {
+            const allVals = await getAll('recordValues');
+            const vals = allVals.filter(v => v.record_id === recordId);
+            const valuesMap = {};
+            vals.forEach(v => { valuesMap[v.item_id] = v; });
+            for (let item of this.inspectionItems) {
+                const val = valuesMap[item.id];
+                if (val) {
+                    this.$set(this.formValues[item.id], 'text', val.text_value || '');
+                    this.$set(this.formValues[item.id], 'photoUrl', val.photo_path || null);
+                    this.$set(this.formValues[item.id], 'voiceUrl', val.voice_path || null);
+                    this.$set(this.formValues[item.id], 'photoFile', null);
+                    this.$set(this.formValues[item.id], 'voiceFile', null);
+                    this.$set(this.formValues[item.id], 'savedPhotoPath', val.photo_path);
+                    this.$set(this.formValues[item.id], 'savedVoicePath', val.voice_path);
+                } else {
+                    this.$set(this.formValues[item.id], 'text', '');
+                    this.$set(this.formValues[item.id], 'photoUrl', null);
+                    this.$set(this.formValues[item.id], 'voiceUrl', null);
+                }
+            }
+        },
+        // 历史记录详情
+        async showRecordDetail(record) {
+            this.selectedRecord = record;
+            // 加载该记录的所有值
+            const allVals = await getAll('recordValues');
+            const vals = allVals.filter(v => v.record_id === record.id);
+            const valuesMap = {};
+            vals.forEach(v => { valuesMap[v.item_id] = v; });
+            const detail = {};
+            for (let item of this.inspectionItems) {
+                const val = valuesMap[item.id];
+                if (val) {
+                    detail[item.id] = {
+                        text: val.text_value || '',
+                        photoUrl: val.photo_path || null,
+                        voiceUrl: val.voice_path || null,
+                        savedPhotoPath: val.photo_path,
+                        savedVoicePath: val.voice_path
+                    };
+                } else {
+                    detail[item.id] = { text: '', photoUrl: null, voiceUrl: null };
+                }
+            }
+            this.detailFormValues = detail;
+            this.showRecordDetailModal = true;
+        },
+        async saveRecordDetail() {
+            // 更新当前记录的值
+            const values = [];
+            for (let item of this.inspectionItems) {
+                const val = this.detailFormValues[item.id];
+                values.push({
+                    item_id: item.id,
+                    text_value: val.text || '',
+                    photo_path: val.photoUrl || null,
+                    voice_path: val.voiceUrl || null
+                });
+            }
+            const allVals = await getAll('recordValues');
+            const toDel = allVals.filter(v => v.record_id === this.selectedRecord.id);
+            for (let v of toDel) await del('recordValues', v.id);
+            for (let v of values) {
+                await put('recordValues', { record_id: this.selectedRecord.id, ...v });
+            }
+            this.showToast('记录已更新');
+            this.showRecordDetailModal = false;
+            await this.loadHistoryList();
+            if (this.currentRecordId === this.selectedRecord.id) {
+                await this.loadRecordValuesToForm(this.currentRecordId);
+            }
+        },
+        async deleteRecordFromDetail() {
+            if (!confirm('确定删除此记录？')) return;
+            await del('records', this.selectedRecord.id);
+            const allVals = await getAll('recordValues');
+            for (let v of allVals.filter(v => v.record_id === this.selectedRecord.id)) await del('recordValues', v.id);
+            this.showToast('删除成功');
+            this.showRecordDetailModal = false;
+            await this.loadHistoryList();
+            if (this.currentRecordId === this.selectedRecord.id) await this.createNewRecord(false);
+        },
+        // 巡检项操作
+        async addNewInspectionItem() {
+            const name = prompt('巡检项名称', '新巡检项');
+            if (!name) return;
+            const newItem = { project_id: this.selectedProjectId, name, is_locked: false, order_index: this.inspectionItems.length };
+            const id = await put('inspectionItems', newItem);
+            this.inspectionItems.push({ ...newItem, id });
+            this.initFormValues();
+            this.showToast('添加成功');
+        },
+        async updateItemName(item) {
+            await put('inspectionItems', item);
+            this.showToast('更新成功');
+        },
+        async toggleLock(item) {
+            await put('inspectionItems', item);
+            this.showToast(item.is_locked ? '已锁定' : '已解锁');
+        },
+        async deleteInspectionItem(itemId) {
+            if (!confirm('确定删除此巡检项？')) return;
+            await del('inspectionItems', itemId);
+            this.inspectionItems = this.inspectionItems.filter(i => i.id !== itemId);
+            this.initFormValues();
+            this.showToast('删除成功');
+        },
+        async moveItem(item, direction) {
+            const idx = this.inspectionItems.findIndex(i => i.id === item.id);
+            if (direction === 'up' && idx > 0) {
+                [this.inspectionItems[idx-1], this.inspectionItems[idx]] = [this.inspectionItems[idx], this.inspectionItems[idx-1]];
+            } else if (direction === 'down' && idx < this.inspectionItems.length-1) {
+                [this.inspectionItems[idx+1], this.inspectionItems[idx]] = [this.inspectionItems[idx], this.inspectionItems[idx+1]];
+            } else return;
+            // 更新 order_index
+            for (let i=0; i<this.inspectionItems.length; i++) {
+                this.inspectionItems[i].order_index = i;
+                await put('inspectionItems', this.inspectionItems[i]);
+            }
+        },
+        async deleteCurrentProject() {
+            if (!this.selectedProjectId) return;
+            const proj = this.projects.find(p => p.id === this.selectedProjectId);
+            if (!confirm(`确定删除项目“${proj.name}”？所有数据将丢失！`)) return;
+            await del('projects', this.selectedProjectId);
+            const items = await getAll('inspectionItems');
+            for (let i of items.filter(i => i.project_id === this.selectedProjectId)) await del('inspectionItems', i.id);
+            const recs = await getAll('records');
+            for (let r of recs.filter(r => r.project_id === this.selectedProjectId)) {
+                await del('records', r.id);
+                const vals = await getAll('recordValues');
+                for (let v of vals.filter(v => v.record_id === r.id)) await del('recordValues', v.id);
+            }
+            this.showToast('项目删除成功');
+            await this.loadProjects();
+            if (this.projects.length) this.selectedProjectId = this.projects[0].id;
+            await this.switchProject();
+        },
+        async createProject() {
+            if (!this.newProjectName.trim()) return;
+            const newProj = { name: this.newProjectName, created_at: new Date().toISOString() };
+            const id = await put('projects', newProj);
+            this.projects.push({ ...newProj, id });
+            this.selectedProjectId = id;
+            this.showNewProjectDialog = false;
+            this.newProjectName = '';
+            await this.switchProject();
+            this.showToast('项目创建成功');
+        },
+        // 照片/语音
+        handlePhotoUpload(event, itemId) {
+            const file = event.target.files[0];
+            if (!file || !file.type.startsWith('image/')) { this.showToast('请选择图片'); return; }
+            const reader = new FileReader();
+            reader.onload = e => {
+                this.$set(this.formValues[itemId], 'photoUrl', e.target.result);
+                this.$set(this.formValues[itemId], 'photoFile', file);
+                this.debouncedAutoSave(); // 触发自动保存
+            };
+            reader.readAsDataURL(file);
+        },
+        clearPhoto(itemId) { this.$set(this.formValues[itemId], 'photoUrl', null); this.$set(this.formValues[itemId], 'photoFile', null); this.debouncedAutoSave(); },
+        clearVoice(itemId) { this.$set(this.formValues[itemId], 'voiceUrl', null); this.$set(this.formValues[itemId], 'voiceFile', null); this.debouncedAutoSave(); },
+        async startRecordVoice(itemId) {
+            if (this.isRecording) { this.showToast('请先停止当前录音'); return; }
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                this.mediaRecorder = new MediaRecorder(stream);
+                this.audioChunks = [];
+                this.mediaRecorder.ondataavailable = e => { if (e.data.size) this.audioChunks.push(e.data); };
+                this.mediaRecorder.onstop = () => {
+                    const blob = new Blob(this.audioChunks, { type: 'audio/webm' });
+                    const url = URL.createObjectURL(blob);
+                    this.$set(this.formValues[itemId], 'voiceUrl', url);
+                    this.$set(this.formValues[itemId], 'voiceFile', blob);
+                    stream.getTracks().forEach(t=>t.stop());
+                    this.isRecording = null;
+                    this.showToast('录音完成');
+                    this.debouncedAutoSave();
+                };
+                this.mediaRecorder.start();
+                this.isRecording = itemId;
+                this.showToast('录音中...');
+            } catch(e) { this.showToast('无法获取麦克风'); }
+        },
+        stopRecordVoice(itemId) { if (this.mediaRecorder && this.isRecording===itemId) this.mediaRecorder.stop(); else this.showToast('未在录音'); },
+        // 模板管理
+        async loadTemplates() {
+            this.templates = await getAll('templates');
+        },
+        async saveCurrentAsTemplate() {
+            if (!this.newTemplateName.trim()) { this.showToast('请输入模板名称'); return; }
+            const items = this.inspectionItems.map(i => ({ name: i.name, is_locked: i.is_locked }));
+            const newTpl = { name: this.newTemplateName, items, created_at: new Date().toISOString() };
+            await put('templates', newTpl);
+            this.showToast('模板保存成功');
+            this.showSaveTemplateDialog = false;
+            this.newTemplateName = '';
+            await this.loadTemplates();
+        },
+        async applyTemplate(templateId) {
+            if (!confirm('应用模板将替换当前所有巡检项，确定吗？')) return;
+            const tpl = (await getAll('templates')).find(t => t.id === templateId);
+            if (!tpl) return;
+            for (let i of this.inspectionItems) await del('inspectionItems', i.id);
+            for (let idx in tpl.items) {
+                const item = tpl.items[idx];
+                await put('inspectionItems', { project_id: this.selectedProjectId, name: item.name, is_locked: item.is_locked, order_index: parseInt(idx) });
+            }
+            await this.loadInspectionItems();
+            this.showToast('模板应用成功');
+        },
+        editTemplate(tpl) {
+            this.editingTemplate = { id: tpl.id, name: tpl.name, items: JSON.parse(JSON.stringify(tpl.items)) };
+            this.showEditTemplateDialog = true;
+        },
+        async updateTemplate() {
+            if (!this.editingTemplate.name.trim()) { this.showToast('请输入模板名称'); return; }
+            await put('templates', { id: this.editingTemplate.id, name: this.editingTemplate.name, items: this.editingTemplate.items, created_at: (await getAll('templates')).find(t=>t.id===this.editingTemplate.id).created_at });
+            this.showToast('模板更新成功');
+            this.showEditTemplateDialog = false;
+            await this.loadTemplates();
+        },
+        async deleteTemplate(templateId) {
+            if (!confirm('确定删除此模板？')) return;
+            await del('templates', templateId);
+            await this.loadTemplates();
+            this.showToast('删除成功');
+        },
+        // 分析
+        async loadAnalysis() {
+            const items = this.inspectionItems.filter(i => i.name.includes('温度') || i.name.includes('湿度'));
+            const result = [];
+            for (let item of items) {
+                const vals = (await getAll('recordValues')).filter(v => v.item_id === item.id && v.text_value);
+                const nums = vals.map(v => parseFloat(v.text_value)).filter(n => !isNaN(n));
+                if (nums.length) {
+                    const avg = nums.reduce((a,b)=>a+b,0) / nums.length;
+                    const max = Math.max(...nums);
+                    const min = Math.min(...nums);
+                    result.push({ item: item.name, avg: avg.toFixed(2), max: max.toFixed(2), min: min.toFixed(2) });
+                } else {
+                    result.push({ item: item.name, avg: null, max: null, min: null });
+                }
+            }
+            this.analysisData = result;
+            this.$nextTick(() => this.renderChart());
+        },
+        renderChart() {
+            const canvas = document.getElementById('analysisChart');
+            if (!canvas) return;
+            if (this.chart) this.chart.destroy();
+            const labels = this.analysisData.map(d => d.item);
+            const avgData = this.analysisData.map(d => parseFloat(d.avg) || 0);
+            if (labels.length) {
+                this.chart = new Chart(canvas, {
+                    type: 'bar',
+                    data: { labels, datasets: [{ label: '平均值', data: avgData, backgroundColor: '#1e6f3f' }] }
+                });
+            }
+        },
+        refreshHistoryList() { this.loadHistoryList(); },
+        formatDate(dateStr) { return dateStr ? new Date(dateStr).toLocaleString() : ''; }
+    }
+});
+</script>
+</body>
+</html>
