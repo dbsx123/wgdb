@@ -1,0 +1,14 @@
+{
+  "background_color": "#ffffff",
+  "dir": "ltr",
+  "display": "standalone",
+  "name": "dbsx123.github",
+  "orientation": "any",
+  "scope": "/",
+  "short_name": "dbsx123.github",
+  "start_url": "https://www.pwabuilder.com/reportcard?site=https://dbsx123.github.io/wgdb/",
+  "theme_color": "#ffffff",
+  "id": "wgdbsx",
+  "description": "xjzs",
+  "lang": "zh"
+}
