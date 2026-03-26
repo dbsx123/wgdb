@@ -36,8 +36,7 @@
         .slider:before { position: absolute; content: ""; height: 16px; width: 16px; left: 2px; bottom: 2px; background-color: white; transition: .4s; border-radius: 50%; }
         input:checked + .slider { background-color: #1e6f3f; }
         input:checked + .slider:before { transform: translateX(20px); }
-    </style>
-    .modal {
+        .modal {
     position: fixed;
     top: 0;
     left: 0;
@@ -57,6 +56,7 @@
     max-height: 90%;
     overflow: auto;
 }
+    </style>
     <script src="libs/vue.js"></script>
     <script src="libs/chart.min.js"></script>
     <script src="libs/supabase.js"></script>
@@ -82,7 +82,7 @@
             </div>
         </div>
     </div>
-
+    
     <!-- 选项卡 -->
     <div class="card">
         <div class="tab-buttons">
@@ -168,7 +168,22 @@
             </div>
         </div>
     </div>
-
+    
+<div class="tab-buttons">
+    <div :class="['tab-button', { active: activeTab === 'items' }]" @click="activeTab='items'">巡检项配置</div>
+    <div :class="['tab-button', { active: activeTab === 'templates' }]" @click="activeTab='templates'">项目模板</div>
+    <div :class="['tab-button', { active: activeTab === 'export' }]" @click="activeTab='export'">数据导出</div>
+    <div :class="['tab-button', { active: activeTab === 'analysis' }]" @click="activeTab='analysis'">历史分析</div>
+</div>
+<!-- 数据导出面板 -->
+<div v-if="activeTab === 'export'">
+    <div class="section-title">导出巡检记录</div>
+    <div class="flex-between">
+        <button class="btn btn-primary" @click="exportData('csv')">导出为 CSV（表格）</button>
+        <button class="btn btn-primary" @click="exportData('txt')">导出为 TXT（文本）</button>
+    </div>
+    <p>导出文件将自动下载到手机本地。</p>
+</div>
     <!-- 历史记录卡片（折叠） -->
     <div class="card">
         <div class="flex-between">
