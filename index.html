@@ -88,6 +88,7 @@
         <div class="tab-buttons">
             <div :class="['tab-button', { active: activeTab === 'items' }]" @click="activeTab='items'">巡检项配置</div>
             <div :class="['tab-button', { active: activeTab === 'templates' }]" @click="activeTab='templates'">项目模板</div>
+            <div :class="['tab-button', { active: activeTab === 'export' }]" @click="activeTab='export'">数据导出</div>
             <div :class="['tab-button', { active: activeTab === 'analysis' }]" @click="activeTab='analysis'">历史分析</div>
         </div>
 
@@ -168,22 +169,16 @@
             </div>
         </div>
     </div>
-    
-<div class="tab-buttons">
-    <div :class="['tab-button', { active: activeTab === 'items' }]" @click="activeTab='items'">巡检项配置</div>
-    <div :class="['tab-button', { active: activeTab === 'templates' }]" @click="activeTab='templates'">项目模板</div>
-    <div :class="['tab-button', { active: activeTab === 'export' }]" @click="activeTab='export'">数据导出</div>
-    <div :class="['tab-button', { active: activeTab === 'analysis' }]" @click="activeTab='analysis'">历史分析</div>
-</div>
-<!-- 数据导出面板 -->
-<div v-if="activeTab === 'export'">
-    <div class="section-title">导出巡检记录</div>
-    <div class="flex-between">
-        <button class="btn btn-primary" @click="exportData('csv')">导出为 CSV（表格）</button>
-        <button class="btn btn-primary" @click="exportData('txt')">导出为 TXT（文本）</button>
+
+        <!-- 数据导出面板 -->
+    <div v-if="activeTab === 'export'">
+        <div class="section-title">导出巡检记录</div>
+        <div class="flex-between">
+            <button class="btn btn-primary" @click="exportData('csv')">导出为 CSV（表格）</button>
+            <button class="btn btn-primary" @click="exportData('txt')">导出为 TXT（文本）</button>
+      </div>
+         <p>导出文件将自动下载到手机本地。</p>
     </div>
-    <p>导出文件将自动下载到手机本地。</p>
-</div>
     <!-- 历史记录卡片（折叠） -->
     <div class="card">
         <div class="flex-between">
